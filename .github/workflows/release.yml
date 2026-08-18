@@ -94,10 +94,7 @@ jobs:
             sleep 10
             adb shell screencap -p /sdcard/launch.png
             adb pull /sdcard/launch.png launch.png
-            adb shell pidof org.traccar.client > /dev/null || {
-              echo "App process not running after launch — crashed."
-              exit 1
-            }
+            adb shell pidof org.traccar.client > /dev/null || exit 1
 
       - uses: actions/upload-artifact@v5
         with:
