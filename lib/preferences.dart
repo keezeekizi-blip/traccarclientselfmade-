@@ -47,7 +47,7 @@ class Preferences {
     }
     if (instance.getString(id) == null) {
       await instance.setString(id, (Random().nextInt(90000000) + 10000000).toString());
-      await instance.setString(url, 'http://demo.traccar.org:5055');
+      await instance.setString(url, 'https://traccar.tail27cc92.ts.net:8443');
       await instance.setString(accuracy, 'medium');
       await instance.setInt(interval, 300);
       await instance.setInt(distance, 75);
