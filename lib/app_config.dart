@@ -1,7 +1,7 @@
 class AppConfig {
   static const registrationUrl = String.fromEnvironment(
     'REGISTRATION_URL',
-    defaultValue: 'http://192.168.8.183:8090',
+    defaultValue: 'https://tracker-register.tail27cc92.ts.net',
   );
 
   static const traccarUrl = String.fromEnvironment(
