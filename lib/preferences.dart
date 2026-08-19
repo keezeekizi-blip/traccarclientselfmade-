@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:math';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_android/shared_preferences_android.dart';
@@ -10,6 +9,8 @@ class Preferences {
   static late SharedPreferencesWithCache instance;
 
   static const String id = 'id';
+  static const String username = 'username';
+  static const String registered = 'registered';
   static const String url = 'url';
   static const String accuracy = 'accuracy';
   static const String distance = 'distance';
@@ -23,6 +24,8 @@ class Preferences {
   static const String password = 'password';
   static const String trackingEnabled = 'tracking_enabled';
 
+  static const String defaultUrl = 'https://traccar.tail27cc92.ts.net:8443';
+
   static Future<void> init() async {
     _initFuture ??= _createInstance();
     await _initFuture;
@@ -31,37 +34,73 @@ class Preferences {
   static Future<void> _createInstance() async {
     instance = await SharedPreferencesWithCache.create(
       sharedPreferencesOptions: Platform.isAndroid
-          ? SharedPreferencesAsyncAndroidOptions(backend: SharedPreferencesAndroidBackendLibrary.SharedPreferences)
+          ? SharedPreferencesAsyncAndroidOptions(
+              backend: SharedPreferencesAndroidBackendLibrary.SharedPreferences,
+            )
           : SharedPreferencesOptions(),
       cacheOptions: SharedPreferencesWithCacheOptions(
         allowList: {
-          id, url, accuracy, distance, interval, angle, heartbeat, buffer, wakelock,
-          stopDetection, preferPlatformProviders, password, trackingEnabled,
+          id,
+          username,
+          registered,
+          url,
+          accuracy,
+          distance,
+          interval,
+          angle,
+          heartbeat,
+          buffer,
+          wakelock,
+          stopDetection,
+          preferPlatformProviders,
+          password,
+          trackingEnabled,
         },
       ),
     );
+
     if (Platform.isAndroid) {
       for (final key in {interval, distance, angle, heartbeat}) {
         if (instance.get(key) is String) {
-          await instance.setInt(key, int.tryParse(instance.getString(key) ?? '') ?? 0);
+          await instance.setInt(
+            key,
+            int.tryParse(instance.getString(key) ?? '') ?? 0,
+          );
         }
       }
     }
-    if (instance.getString(id) == null) {
-      await instance.setString(id, (Random().nextInt(90000000) + 10000000).toString());
-      await instance.setString(url, 'https://traccar.tail27cc92.ts.net:8443');
+
+    if (instance.getString(url) == null) {
+      await instance.setString(url, defaultUrl);
+    }
+    if (instance.getString(accuracy) == null) {
       await instance.setString(accuracy, 'medium');
+    }
+    if (instance.getInt(interval) == null) {
       await instance.setInt(interval, 300);
+    }
+    if (instance.getInt(distance) == null) {
       await instance.setInt(distance, 75);
+    }
+    if (instance.getBool(buffer) == null) {
       await instance.setBool(buffer, true);
+    }
+    if (instance.getBool(stopDetection) == null) {
       await instance.setBool(stopDetection, true);
+    }
+    if (instance.getBool(registered) == null) {
+      await instance.setBool(registered, false);
+    }
+    if (instance.getBool(trackingEnabled) == null) {
       await instance.setBool(trackingEnabled, false);
     }
   }
 
+  static bool get isRegistered => instance.getBool(registered) ?? false;
+
   static Config buildConfig() {
     return Config(
-      serverUrl: instance.getString(url) ?? '',
+      serverUrl: instance.getString(url) ?? defaultUrl,
       deviceId: instance.getString(id) ?? '',
       location: LocationConfig(
         accuracy: switch (instance.getString(accuracy)) {
