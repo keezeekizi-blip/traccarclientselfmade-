@@ -1,17 +1,20 @@
-name: Build Android APK
+name: Android CI, Build & Release
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+env:
+  JAVA_VERSION: '17'
 
 jobs:
-  build:
-    name: Build APK
+  android:
+    name: Analyze, build and release APK
     runs-on: ubuntu-latest
 
     steps:
@@ -22,13 +25,19 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Flutter analyze
+        run: flutter analyze
 
       - name: Prepare Android signing
         env:
@@ -53,9 +62,6 @@ jobs:
           EOF
           test -s "$RUNNER_TEMP/signing/android.keystore"
           test -s environment/key.properties
-
-      - name: Install dependencies
-        run: flutter pub get
 
       - name: Build release APK
         run: flutter build apk --release
@@ -90,8 +96,29 @@ jobs:
           test -x "$AAPT"
           "$AAPT" dump badging "$APK" | grep -F "package: name='org.traccar.client'"
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: traccar-client-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Prepare APK for release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp build/app/outputs/flutter-apk/app-release.apk tracker-registration.apk
+          sha256sum tracker-registration.apk
+          ls -lh tracker-registration.apk
+
+      - name: Publish APK release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: latest
+          name: Latest Tracker Registration APK
+          body: |
+            Automatically updated release containing the latest signed Android APK.
+          target_commitish: ${{ github.sha }}
+          files: tracker-registration.apk
+          overwrite_files: true
+          make_latest: true
+          fail_on_unmatched_files: true
