@@ -71,7 +71,18 @@ jobs:
           test -s "$APK"
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose "$APK"
+          VERIFY_OUTPUT=$("$APKSIGNER" verify --verbose "$APK" 2>&1)
+          printf '%s\n' "$VERIFY_OUTPUT"
+          printf '%s\n' "$VERIFY_OUTPUT" | grep -F "Verified using v2 scheme: true"
+
+      - name: Validate APK alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          ZIPALIGN=$(find "$ANDROID_HOME/build-tools" -name zipalign -type f | sort -V | tail -1)
+          test -x "$ZIPALIGN"
+          "$ZIPALIGN" -c -P 16 -v 4 "$APK"
 
       - name: Validate APK package
         shell: bash
