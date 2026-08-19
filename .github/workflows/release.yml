@@ -41,7 +41,10 @@ jobs:
           KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
         shell: bash
         run: |
+          set -e
+
           mkdir -p "$RUNNER_TEMP/signing"
+
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/signing/android.keystore"
 
           cat > "$RUNNER_TEMP/signing/key.properties" <<EOF
@@ -51,6 +54,11 @@ jobs:
           storeFile=$RUNNER_TEMP/signing/android.keystore
           EOF
 
+          cp "$RUNNER_TEMP/signing/key.properties" android/key.properties
+
+          test -s "$RUNNER_TEMP/signing/android.keystore"
+          test -s android/key.properties
+
       - name: Install dependencies
         run: flutter pub get
 
@@ -58,7 +66,9 @@ jobs:
         run: flutter build apk --release
 
       - name: Verify APK
+        shell: bash
         run: |
+          set -e
           test -f build/app/outputs/flutter-apk/app-release.apk
           ls -lh build/app/outputs/flutter-apk/app-release.apk
 
@@ -72,6 +82,7 @@ jobs:
 
   release-github:
     name: Create GitHub Release
+    if: github.ref_type == 'tag'
     needs: build-android
     runs-on: ubuntu-latest
 
@@ -82,8 +93,15 @@ jobs:
           name: android-release
           path: release
 
+      - name: Verify downloaded APK
+        shell: bash
+        run: |
+          set -e
+          test -f release/app-release.apk
+          ls -lh release/app-release.apk
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: release/app-release.apk
           generate_release_notes: true
