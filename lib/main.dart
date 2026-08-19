@@ -55,6 +55,13 @@ class _MainAppState extends State<MainApp> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _initLinks();
       await rateMyApp.init();
+      if (Preferences.isRegistered) {
+        try {
+          await GeolocationService.tracker.start();
+        } on PlatformException {
+          // Location permission or Android background-service startup can require user action.
+        }
+      }
       final dialogContext = navigatorKey.currentContext;
       if (dialogContext != null && dialogContext.mounted && rateMyApp.shouldOpenDialog) {
         await rateMyApp.showRateDialog(dialogContext);
