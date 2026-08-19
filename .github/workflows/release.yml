@@ -41,18 +41,21 @@ jobs:
           KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
         shell: bash
         run: |
-          set -e
-          mkdir -p "$RUNNER_TEMP/signing"
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64"
+          test -n "$STORE_PASSWORD"
+          test -n "$KEY_PASSWORD"
+          test -n "$KEY_ALIAS"
+          mkdir -p "$RUNNER_TEMP/signing" environment
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/signing/android.keystore"
-          cat > "$RUNNER_TEMP/signing/key.properties" <<EOF
+          cat > environment/key.properties <<EOF
           storePassword=$STORE_PASSWORD
           keyPassword=$KEY_PASSWORD
           keyAlias=$KEY_ALIAS
           storeFile=$RUNNER_TEMP/signing/android.keystore
           EOF
-          cp "$RUNNER_TEMP/signing/key.properties" android/key.properties
           test -s "$RUNNER_TEMP/signing/android.keystore"
-          test -s android/key.properties
+          test -s environment/key.properties
 
       - name: Install dependencies
         run: flutter pub get
@@ -60,11 +63,31 @@ jobs:
       - name: Build release APK
         run: flutter build apk --release
 
+      - name: Validate release APK signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          test -s "$APK"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose "$APK"
+
+      - name: Validate APK package
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
+          test -x "$AAPT"
+          "$AAPT" dump badging "$APK" | grep -F "package: name='org.traccar.client'"
+
       - name: Prepare APK for release
         run: |
-          set -e
-          test -f build/app/outputs/flutter-apk/app-release.apk
-          cp build/app/outputs/flutter-apk/app-release.apk tracker-registration.apk
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          cp "$APK" tracker-registration.apk
+          sha256sum tracker-registration.apk
           ls -lh tracker-registration.apk
 
       - name: Publish APK release
