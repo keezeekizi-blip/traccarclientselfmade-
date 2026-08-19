@@ -34,16 +34,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     try {
       await RegistrationService.register(_controller.text);
       await GeolocationService.tracker.init(Preferences.buildConfig());
-      await GeolocationService.tracker.start();
+      try {
+        await GeolocationService.tracker.start();
+      } on PlatformException {
+        // MainScreen will retry automatically after the user handles permissions.
+      }
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const MainScreen()),
       );
-    } on PlatformException {
-      if (!mounted) return;
-      setState(() {
-        _error = 'Registrierung war erfolgreich, aber der Standortzugriff konnte nicht gestartet werden. Bitte erlaube den Standortzugriff und versuche es erneut.';
-      });
     } on RegistrationException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
