@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build APK
@@ -25,12 +28,67 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
+
+      - name: Prepare Android signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64"
+          test -n "$STORE_PASSWORD"
+          test -n "$KEY_PASSWORD"
+          test -n "$KEY_ALIAS"
+          mkdir -p "$RUNNER_TEMP/signing" environment
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/signing/android.keystore"
+          cat > environment/key.properties <<EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=$RUNNER_TEMP/signing/android.keystore
+          EOF
+          test -s "$RUNNER_TEMP/signing/android.keystore"
+          test -s environment/key.properties
 
       - name: Install dependencies
         run: flutter pub get
 
       - name: Build release APK
         run: flutter build apk --release
+
+      - name: Validate APK signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          test -s "$APK"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose "$APK" | tee "$RUNNER_TEMP/apksigner.txt"
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' "$RUNNER_TEMP/apksigner.txt"
+          grep -q 'Verified using v1 scheme (JAR signing): true' "$RUNNER_TEMP/apksigner.txt"
+
+      - name: Validate APK alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          ZIPALIGN=$(find "$ANDROID_HOME/build-tools" -name zipalign -type f | sort -V | tail -1)
+          test -x "$ZIPALIGN"
+          "$ZIPALIGN" -c -P 16 -v 4 "$APK"
+
+      - name: Validate APK package
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
+          test -x "$AAPT"
+          "$AAPT" dump badging "$APK" | grep -F "package: name='org.traccar.client'"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
