@@ -8,7 +8,7 @@ plugins {
     id("com.google.firebase.crashlytics")
     // END: FlutterFire Configuration
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -49,6 +49,10 @@ android {
                 keyPassword = keystoreProperties["keyPassword"] as String
                 storeFile = keystoreProperties["storeFile"]?.let { file(it) }
                 storePassword = keystoreProperties["storePassword"] as String
+                // Use modern APK Signature Scheme v2 only. This avoids producing
+                // an incomplete legacy v1/JAR signature without META-INF/MANIFEST.MF.
+                enableV1Signing = false
+                enableV2Signing = true
             }
         }
     }
