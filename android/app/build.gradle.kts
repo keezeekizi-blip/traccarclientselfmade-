@@ -35,7 +35,7 @@ android {
     defaultConfig {
         applicationId = "org.traccar.client"
         // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        // For more information about these values, see https://flutter.dev/to/review-gradle-config.
         minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -49,13 +49,14 @@ android {
                 keyPassword = keystoreProperties["keyPassword"] as String
                 storeFile = keystoreProperties["storeFile"]?.let { file(it) }
                 storePassword = keystoreProperties["storePassword"] as String
-                // Use modern APK Signature Scheme v2 only. This avoids producing
-                // an incomplete legacy v1/JAR signature without META-INF/MANIFEST.MF.
-                enableV1Signing = false
+                // Produce a standard Android release APK with both modern v2
+                // and legacy v1/JAR signing for broad installer compatibility.
+                enableV1Signing = true
                 enableV2Signing = true
             }
         }
     }
+
     buildTypes {
         release {
             if (keystorePropertiesFile.exists()) {
