@@ -33,7 +33,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
     try {
       await RegistrationService.register(_controller.text);
-      await GeolocationService.tracker.setConfig(Preferences.buildConfig());
+      await GeolocationService.tracker.init(Preferences.buildConfig());
       await GeolocationService.tracker.start();
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
