@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:math';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_android/shared_preferences_android.dart';
@@ -59,6 +58,7 @@ class Preferences {
         },
       ),
     );
+
     if (Platform.isAndroid) {
       for (final key in {interval, distance, angle, heartbeat}) {
         if (instance.get(key) is String) {
@@ -66,9 +66,8 @@ class Preferences {
         }
       }
     }
-    if (instance.getString(id) == null) {
-      await instance.setString(id, (Random().nextInt(90000000) + 10000000).toString());
-      await instance.setString(url, AppConfig.traccarUrl);
+
+    if (instance.getString(accuracy) == null) {
       await instance.setString(accuracy, 'medium');
       await instance.setInt(interval, 300);
       await instance.setInt(distance, 75);
@@ -79,7 +78,6 @@ class Preferences {
 
   static bool get isRegistered =>
       (instance.getString(nickname)?.isNotEmpty ?? false) &&
-      (instance.getString(deviceId)?.isNotEmpty ?? false) &&
       (instance.getString(id)?.isNotEmpty ?? false);
 
   static Config buildConfig() {
