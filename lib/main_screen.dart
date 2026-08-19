@@ -99,11 +99,14 @@ class MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                           duration: Duration(seconds: 4),
                         ),
                       );
+                    } else {
+                      await Preferences.instance.setBool(Preferences.trackingEnabled, true);
                     }
                     setState(() => trackingEnabled = started);
                   } else {
                     FirebaseCrashlytics.instance.log('tracking_toggle_stop');
                     await GeolocationService.tracker.stop();
+                    await Preferences.instance.setBool(Preferences.trackingEnabled, false);
                     if (mounted) setState(() => trackingEnabled = false);
                   }
                 }
