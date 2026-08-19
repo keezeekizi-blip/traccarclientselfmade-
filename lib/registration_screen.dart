@@ -43,17 +43,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       await Preferences.instance.setString(Preferences.id, result.uniqueId);
       await Preferences.instance.setString(Preferences.url, Preferences.defaultUrl);
       await Preferences.instance.setBool(Preferences.registered, true);
+      await Preferences.instance.setBool(Preferences.trackingEnabled, false);
 
       await GeolocationService.tracker.init(Preferences.buildConfig());
-
-      try {
-        await GeolocationService.tracker.start();
-        await Preferences.instance.setBool(Preferences.trackingEnabled, true);
-      } catch (_) {
-        // Android may require location permission before the foreground service can start.
-        // Registration is retained so the user is not registered a second time.
-        await Preferences.instance.setBool(Preferences.trackingEnabled, false);
-      }
 
       if (!mounted) return;
       widget.onRegistered();
@@ -86,7 +78,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    'Der Benutzername wird einmalig beim Tracker-Server registriert. Danach wird diesem Gerät automatisch eine eigene Geräte-ID zugewiesen.',
+                    'Der Benutzername wird einmalig beim Tracker-Server registriert. Danach wird diesem Gerät automatisch eine eigene Geräte-ID zugewiesen und das Tracking gestartet.',
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 28),
@@ -105,7 +97,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     const SizedBox(height: 12),
                     Text(
                       _error!,
-                      style: TextStyle(color: Colors.red),
+                      style: const TextStyle(color: Colors.red),
                       textAlign: TextAlign.center,
                     ),
                   ],
