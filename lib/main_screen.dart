@@ -1,16 +1,8 @@
-import 'dart:io';
-
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:traccar_client/main.dart';
-import 'package:traccar_client/password_service.dart';
-import 'package:traccar_client/preferences.dart';
 
 import 'geolocation_service.dart';
-import 'l10n/app_localizations.dart';
-import 'settings_screen.dart';
-import 'status_screen.dart';
+import 'preferences.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -20,13 +12,14 @@ class MainScreen extends StatefulWidget {
 }
 
 class MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
-  bool trackingEnabled = false;
+  bool _tracking = false;
+  bool _starting = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _refreshState();
+    _ensureTracking();
   }
 
   @override
@@ -38,157 +31,71 @@ class MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _refreshState();
+      _ensureTracking();
     }
   }
 
-  Future<void> _refreshState() async {
-    final tracking = await GeolocationService.tracker.isTracking();
-    if (!mounted) return;
-    setState(() {
-      trackingEnabled = tracking;
-    });
+  Future<void> _ensureTracking() async {
+    if (_starting || !Preferences.isRegistered) return;
+    final alreadyTracking = await GeolocationService.tracker.isTracking();
+    if (alreadyTracking) {
+      if (mounted) setState(() => _tracking = true);
+      return;
+    }
+
+    if (mounted) setState(() => _starting = true);
+    try {
+      await GeolocationService.tracker.start();
+      if (mounted) setState(() => _tracking = true);
+    } on PlatformException {
+      if (mounted) setState(() => _tracking = false);
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
   }
 
-  void refresh() => setState(() {});
-
-  Widget _buildTrackingCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(AppLocalizations.of(context)!.trackingTitle),
-              titleTextStyle: Theme.of(context).textTheme.headlineMedium,
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(AppLocalizations.of(context)!.idLabel),
-              subtitle: Text(Preferences.instance.getString(Preferences.id) ?? ''),
-            ),
-            if (Platform.isAndroid) ...[
-              Text(
-                AppLocalizations.of(context)!.disclosureMessage,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 8),
-            ],
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(AppLocalizations.of(context)!.trackingLabel),
-              value: trackingEnabled,
-              onChanged: (bool value) async {
-                if (await PasswordService.authenticate(context) && mounted) {
-                  if (value) {
-                    FirebaseCrashlytics.instance.log('tracking_toggle_start');
-                    var started = false;
-                    try {
-                      await GeolocationService.tracker.start();
-                      started = true;
-                    } on PlatformException {
-                      // permission denied or startup error
-                    }
-                    if (!mounted) return;
-                    if (!started) {
-                      messengerKey.currentState?.showSnackBar(
-                        const SnackBar(
-                          content: Text('Failed to start tracking. Check location permissions.'),
-                          duration: Duration(seconds: 4),
-                        ),
-                      );
-                    }
-                    setState(() => trackingEnabled = started);
-                  } else {
-                    FirebaseCrashlytics.instance.log('tracking_toggle_stop');
-                    await GeolocationService.tracker.stop();
-                    if (mounted) setState(() => trackingEnabled = false);
-                  }
-                }
-              },
-            ),
-            const SizedBox(height: 8),
-            OverflowBar(
-              spacing: 8,
-              children: [
-                FilledButton.tonal(
-                  onPressed: () async {
-                    try {
-                      await GeolocationService.tracker.requestPosition();
-                    } on PlatformException {
-                      // permission denied or location error
-                    }
-                  },
-                  child: Text(AppLocalizations.of(context)!.locationButton),
-                ),
-                FilledButton.tonal(
-                  onPressed: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const StatusScreen()));
-                  },
-                  child: Text(AppLocalizations.of(context)!.statusButton),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSettingsCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(AppLocalizations.of(context)!.settingsTitle),
-              titleTextStyle: Theme.of(context).textTheme.headlineMedium,
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(AppLocalizations.of(context)!.urlLabel),
-              subtitle: Text(Preferences.instance.getString(Preferences.url) ?? ''),
-            ),
-            const SizedBox(height: 8),
-            OverflowBar(
-              spacing: 8,
-              children: [
-                FilledButton.tonal(
-                  onPressed: () async {
-                    if (await PasswordService.authenticate(context) && mounted) {
-                      await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
-                      setState(() {});
-                    }
-                  },
-                  child: Text(AppLocalizations.of(context)!.settingsButton),
-                ),
-              ],
-            ),
-          ]
-        ),
-      ),
-    );
-  }
+  void refresh() => _ensureTracking();
 
   @override
   Widget build(BuildContext context) {
+    final nickname = Preferences.instance.getString(Preferences.nickname) ?? '';
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Traccar Client'),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            _buildTrackingCard(),
-            const SizedBox(height: 16),
-            _buildSettingsCard(),
-          ],
+      appBar: AppBar(title: const Text('Tracker')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _tracking ? Icons.location_on : Icons.location_searching,
+                size: 72,
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Hallo $nickname',
+                style: Theme.of(context).textTheme.headlineMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _tracking
+                    ? 'Dein Standort wird automatisch übertragen.'
+                    : _starting
+                        ? 'Tracking wird gestartet …'
+                        : 'Standortzugriff wird benötigt, damit das Tracking starten kann.',
+                textAlign: TextAlign.center,
+              ),
+              if (!_tracking && !_starting) ...[
+                const SizedBox(height: 20),
+                FilledButton.tonal(
+                  onPressed: _ensureTracking,
+                  child: const Text('Erneut versuchen'),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );

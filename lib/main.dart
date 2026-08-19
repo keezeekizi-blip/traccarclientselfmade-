@@ -17,6 +17,7 @@ import 'l10n/app_localizations.dart';
 import 'main_screen.dart';
 import 'managed_config_service.dart';
 import 'preferences.dart';
+import 'registration_screen.dart';
 
 final messengerKey = GlobalKey<ScaffoldMessengerState>();
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -31,7 +32,9 @@ void main() async {
     return true;
   };
   await Preferences.init();
-  await GeolocationService.tracker.init(Preferences.buildConfig());
+  if (Preferences.isRegistered) {
+    await GeolocationService.tracker.init(Preferences.buildConfig());
+  }
   await PasswordService.migrate();
   await PushService.init();
   await ManagedConfigService.init();
@@ -54,6 +57,13 @@ class _MainAppState extends State<MainApp> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _initLinks();
       await rateMyApp.init();
+      if (Preferences.isRegistered) {
+        try {
+          await GeolocationService.tracker.start();
+        } on PlatformException {
+          // The SDK handles the permission flow. A later resume can retry startup.
+        }
+      }
       final dialogContext = navigatorKey.currentContext;
       if (dialogContext != null && dialogContext.mounted && rateMyApp.shouldOpenDialog) {
         await rateMyApp.showRateDialog(dialogContext);
@@ -66,6 +76,7 @@ class _MainAppState extends State<MainApp> {
   }
 
   Future<void> _handleUri(Uri uri) async {
+    if (!Preferences.isRegistered) return;
     if (uri.host == 'action') {
       try {
         switch (uri.pathSegments.firstOrNull) {
@@ -125,7 +136,10 @@ class _MainAppState extends State<MainApp> {
       home: Stack(
         children: [
           const QuickActionsInitializer(),
-          MainScreen(key: mainScreenKey),
+          if (Preferences.isRegistered)
+            MainScreen(key: mainScreenKey)
+          else
+            const RegistrationScreen(),
         ],
       ),
     );
