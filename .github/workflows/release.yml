@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -13,8 +13,8 @@ env:
   JAVA_VERSION: '17'
 
 jobs:
-  build-android:
-    name: Build Android APK
+  build-and-release:
+    name: Build and publish Android APK
     runs-on: ubuntu-latest
 
     steps:
@@ -42,20 +42,15 @@ jobs:
         shell: bash
         run: |
           set -e
-
           mkdir -p "$RUNNER_TEMP/signing"
-
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/signing/android.keystore"
-
           cat > "$RUNNER_TEMP/signing/key.properties" <<EOF
           storePassword=$STORE_PASSWORD
           keyPassword=$KEY_PASSWORD
           keyAlias=$KEY_ALIAS
           storeFile=$RUNNER_TEMP/signing/android.keystore
           EOF
-
           cp "$RUNNER_TEMP/signing/key.properties" android/key.properties
-
           test -s "$RUNNER_TEMP/signing/android.keystore"
           test -s android/key.properties
 
@@ -65,44 +60,22 @@ jobs:
       - name: Build release APK
         run: flutter build apk --release
 
-      - name: Verify APK
-        shell: bash
+      - name: Prepare APK for release
         run: |
           set -e
           test -f build/app/outputs/flutter-apk/app-release.apk
-          ls -lh build/app/outputs/flutter-apk/app-release.apk
+          cp build/app/outputs/flutter-apk/app-release.apk tracker-registration.apk
+          ls -lh tracker-registration.apk
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-release
-          path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
-          retention-days: 7
-
-  release-github:
-    name: Create GitHub Release
-    if: github.ref_type == 'tag'
-    needs: build-android
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download APK
-        uses: actions/download-artifact@v4
-        with:
-          name: android-release
-          path: release
-
-      - name: Verify downloaded APK
-        shell: bash
-        run: |
-          set -e
-          test -f release/app-release.apk
-          ls -lh release/app-release.apk
-
-      - name: Create GitHub Release
+      - name: Publish APK release
         uses: softprops/action-gh-release@v3
         with:
-          files: release/app-release.apk
-          generate_release_notes: true
+          tag_name: latest
+          name: Latest Tracker Registration APK
+          body: |
+            Automatically updated release containing the latest signed Android APK.
+          target_commitish: ${{ github.sha }}
+          files: tracker-registration.apk
+          overwrite_files: true
+          make_latest: true
           fail_on_unmatched_files: true
