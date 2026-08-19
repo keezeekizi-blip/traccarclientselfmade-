@@ -21,6 +21,7 @@ class Preferences {
   static const String stopDetection = 'stop_detection';
   static const String preferPlatformProviders = 'prefer_platform_providers';
   static const String password = 'password';
+  static const String trackingEnabled = 'tracking_enabled';
 
   static Future<void> init() async {
     _initFuture ??= _createInstance();
@@ -34,7 +35,8 @@ class Preferences {
           : SharedPreferencesOptions(),
       cacheOptions: SharedPreferencesWithCacheOptions(
         allowList: {
-          id, url, accuracy, distance, interval, angle, heartbeat, buffer, wakelock, stopDetection, preferPlatformProviders, password,
+          id, url, accuracy, distance, interval, angle, heartbeat, buffer, wakelock,
+          stopDetection, preferPlatformProviders, password, trackingEnabled,
         },
       ),
     );
@@ -53,6 +55,7 @@ class Preferences {
       await instance.setInt(distance, 75);
       await instance.setBool(buffer, true);
       await instance.setBool(stopDetection, true);
+      await instance.setBool(trackingEnabled, false);
     }
   }
 
