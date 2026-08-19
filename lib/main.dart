@@ -17,6 +17,7 @@ import 'l10n/app_localizations.dart';
 import 'main_screen.dart';
 import 'managed_config_service.dart';
 import 'preferences.dart';
+import 'registration_screen.dart';
 
 final messengerKey = GlobalKey<ScaffoldMessengerState>();
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -125,7 +126,10 @@ class _MainAppState extends State<MainApp> {
       home: Stack(
         children: [
           const QuickActionsInitializer(),
-          MainScreen(key: mainScreenKey),
+          if (Preferences.isRegistered)
+            MainScreen(key: mainScreenKey)
+          else
+            const RegistrationScreen(),
         ],
       ),
     );
