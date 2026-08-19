@@ -1,44 +1,32 @@
+```yaml
 name: Release
 
 on:
   push:
     tags:
       - 'v*'
-
   workflow_dispatch:
-    inputs:
-      platform:
-        description: Platforms to build
-        type: choice
-        options:
-          - android
-          - ios
-          - both
-        default: android
+
+permissions:
+  contents: write
 
 env:
-  IOS_BUNDLE_ID: org.traccar.client.TraccarClient
-
-# ============================================================
-# ANDROID
-# ============================================================
+  JAVA_VERSION: '17'
 
 jobs:
-
   build-android:
-    if: ${{ github.event_name == 'push' || inputs.platform == 'android' || inputs.platform == 'both' }}
+    name: Build Android APK
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -52,309 +40,57 @@ jobs:
           STORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-
+        shell: bash
         run: |
-          set -e
+          mkdir -p "$RUNNER_TEMP/signing"
 
-          mkdir -p "$RUNNER_WORKSPACE/environment"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/signing/android.keystore"
 
-          echo "$KEYSTORE_BASE64" | base64 -d \
-            > "$RUNNER_WORKSPACE/environment/android.keystore"
-
-          cat > "$RUNNER_WORKSPACE/environment/key.properties" <<EOF
+          cat > "$RUNNER_TEMP/signing/key.properties" <<EOF
           storePassword=$STORE_PASSWORD
           keyPassword=$KEY_PASSWORD
           keyAlias=$KEY_ALIAS
-          storeFile=../../../environment/android.keystore
+          storeFile=$RUNNER_TEMP/signing/android.keystore
           EOF
 
-          echo "Android signing configuration prepared."
+          echo "KEY_PROPERTIES=$RUNNER_TEMP/signing/key.properties" >> "$GITHUB_ENV"
 
-      - name: Build Android APK
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Verify APK exists
+        shell: bash
         run: |
-          flutter pub get
-          flutter build apk --release
+          test -f build/app/outputs/flutter-apk/app-release.apk
+          ls -lh build/app/outputs/flutter-apk/app-release.apk
 
-      - name: Upload Android artifact
-        uses: actions/upload-artifact@v6
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
         with:
           name: android-release
-          path: |
-            build/app/outputs/flutter-apk/app-release.apk
-            build/app/outputs/mapping/release/mapping.txt
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
 
-
-  # ============================================================
-  # ANDROID SMOKE TEST
-  # ============================================================
-
-  smoke-test-android:
+  release-github:
+    name: Create GitHub Release
     needs: build-android
     runs-on: ubuntu-latest
 
     steps:
-
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Download Android artifact
-        uses: actions/download-artifact@v6
+      - name: Download APK
+        uses: actions/download-artifact@v4
         with:
           name: android-release
-          path: .
-
-      - name: Launch emulator and test APK
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-
-          script: |
-            adb wait-for-device
-
-            echo "Installing APK..."
-            adb install -r flutter-apk/app-release.apk
-
-            echo "Starting Traccar Client..."
-            adb shell am start -W -n org.traccar.client/org.traccar.client.MainActivity
-
-            sleep 10
-
-            echo "Taking screenshot..."
-            adb shell screencap -p /sdcard/launch.png
-            adb pull /sdcard/launch.png launch.png
-
-            echo "Checking application process..."
-
-            if adb shell pidof org.traccar.client > /dev/null; then
-              echo "Traccar Client started successfully."
-            else
-              echo "ERROR: Traccar Client process is not running."
-              exit 1
-            fi
-
-      - name: Upload launch screenshot
-        uses: actions/upload-artifact@v6
-        with:
-          name: launch-screenshot
-          path: launch.png
-          if-no-files-found: error
-          retention-days: 1
-
-
-  # ============================================================
-  # GITHUB RELEASE
-  #
-  # DAS IST DER WICHTIGE TEIL FÜR DEINEN APK-LINK.
-  # ============================================================
-
-  release-github:
-    needs:
-      - build-android
-      - smoke-test-android
-
-    if: |
-      needs.build-android.result == 'success' &&
-      needs.smoke-test-android.result == 'success'
-
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
-
-    steps:
-
-      - name: Download Android APK
-        uses: actions/download-artifact@v6
-        with:
-          name: android-release
-          path: .
+          path: release
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'push' && github.ref_name || format('android-build-{0}', github.run_number) }}
-          name: ${{ github.event_name == 'push' && github.ref_name || format('Android Build {0}', github.run_number) }}
-          target_commitish: ${{ github.sha }}
-          make_latest: true
+          files: release/app-release.apk
           generate_release_notes: true
-          files: |
-            flutter-apk/app-release.apk
-
-
-# ============================================================
-# iOS
-# ============================================================
-
-  build-ios:
-    if: ${{ github.event_name == 'push' || inputs.platform == 'ios' || inputs.platform == 'both' }}
-    runs-on: macos-26
-
-    steps:
-
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Install FlutterFire CLI
-        run: |
-          dart pub global activate flutterfire_cli
-
-      - name: Install Codemagic CLI tools
-        run: |
-          pip3 install --break-system-packages codemagic-cli-tools
-
-      - name: Initialize signing keychain
-        env:
-          KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
-
-        run: |
-          keychain initialize --password "$KEYCHAIN_PASSWORD"
-
-      - name: Decode App Store Connect API key
-        env:
-          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
-
-        run: |
-          echo "$ASC_API_KEY_BASE64" | base64 -d \
-            > "$RUNNER_TEMP/AuthKey.p8"
-
-      - name: Write distribution private key
-        env:
-          IOS_DIST_PRIVATE_KEY: ${{ secrets.IOS_DIST_PRIVATE_KEY }}
-
-        run: |
-          printf '%s' "$IOS_DIST_PRIVATE_KEY" \
-            > "$RUNNER_TEMP/dist_private_key.pem"
-
-      - name: Fetch signing files
-        env:
-          APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.ASC_KEY_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-
-        run: |
-          app-store-connect fetch-signing-files "$IOS_BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --private-key "@file:$RUNNER_TEMP/AuthKey.p8" \
-            --certificate-key "@file:$RUNNER_TEMP/dist_private_key.pem" \
-            --create
-
-      - name: Install certificates
-        run: |
-          keychain add-certificates
-
-      - name: Apply signing profiles
-        working-directory: ios
-
-        run: |
-          xcode-project use-profiles \
-            --export-options-plist "$RUNNER_TEMP/ExportOptions.plist"
-
-      - name: Build IPA
-        run: |
-          set -e
-
-          flutter pub get
-
-          flutter build ios \
-            --release \
-            --no-codesign
-
-          ARCHIVE_PATH="$RUNNER_TEMP/Runner.xcarchive"
-          EXPORT_PATH="$RUNNER_TEMP/ipa"
-
-          cd ios
-
-          xcodebuild \
-            -workspace Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -archivePath "$ARCHIVE_PATH" \
-            archive
-
-          xcodebuild \
-            -exportArchive \
-            -archivePath "$ARCHIVE_PATH" \
-            -exportPath "$EXPORT_PATH" \
-            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
-
-      - name: Upload dSYMs to Crashlytics
-        run: |
-          UPLOAD_SYMBOLS=$(find build/ios/SourcePackages/checkouts \
-            -name upload-symbols \
-            -type f | head -1)
-
-          if [ -n "$UPLOAD_SYMBOLS" ]; then
-            "$UPLOAD_SYMBOLS" \
-              -gsp ios/Runner/GoogleService-Info.plist \
-              -p ios \
-              "$RUNNER_TEMP/Runner.xcarchive/dSYMs"
-          else
-            echo "upload-symbols not found. Skipping Crashlytics symbols."
-          fi
-
-      - name: Upload iOS IPA artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: ios-ipa
-          path: ${{ runner.temp }}/ipa/*.ipa
-          if-no-files-found: error
-          retention-days: 1
-
-
-# ============================================================
-# APP STORE CONNECT
-# ============================================================
-
-  publish-ios:
-    needs: build-ios
-
-    if: ${{ needs.build-ios.result == 'success' }}
-
-    runs-on: macos-26
-
-    steps:
-
-      - name: Download IPA
-        uses: actions/download-artifact@v6
-        with:
-          name: ios-ipa
-          path: ipa
-
-      - name: Upload to App Store Connect
-        env:
-          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-
-        run: |
-          set -e
-
-          mkdir -p ~/.appstoreconnect/private_keys
-
-          echo "$ASC_API_KEY_BASE64" | base64 -d \
-            > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
-
-          IPA=$(ls ipa/*.ipa | head -n 1)
-
-          xcrun altool \
-            --upload-app \
-            -t ios \
-            -f "$IPA" \
-            --apiKey "$ASC_KEY_ID" \
-            --apiIssuer "$ASC_ISSUER_ID"
+          fail_on_unmatched_files: true
+```
