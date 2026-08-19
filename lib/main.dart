@@ -17,6 +17,7 @@ import 'l10n/app_localizations.dart';
 import 'main_screen.dart';
 import 'managed_config_service.dart';
 import 'preferences.dart';
+import 'registration_screen.dart';
 
 final messengerKey = GlobalKey<ScaffoldMessengerState>();
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -31,7 +32,9 @@ void main() async {
     return true;
   };
   await Preferences.init();
-  await GeolocationService.tracker.init(Preferences.buildConfig());
+  if (Preferences.isRegistered) {
+    await GeolocationService.tracker.init(Preferences.buildConfig());
+  }
   await PasswordService.migrate();
   await PushService.init();
   await ManagedConfigService.init();
@@ -47,6 +50,7 @@ class MainApp extends StatefulWidget {
 
 class _MainAppState extends State<MainApp> {
   RateMyApp rateMyApp = RateMyApp(minDays: 0, minLaunches: 0);
+  bool _registered = Preferences.isRegistered;
 
   @override
   void initState() {
@@ -54,6 +58,9 @@ class _MainAppState extends State<MainApp> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _initLinks();
       await rateMyApp.init();
+      if (_registered) {
+        await _startTracking();
+      }
       final dialogContext = navigatorKey.currentContext;
       if (dialogContext != null && dialogContext.mounted && rateMyApp.shouldOpenDialog) {
         await rateMyApp.showRateDialog(dialogContext);
@@ -61,11 +68,21 @@ class _MainAppState extends State<MainApp> {
     });
   }
 
+  Future<void> _startTracking() async {
+    try {
+      await GeolocationService.tracker.start();
+      await Preferences.instance.setBool(Preferences.trackingEnabled, true);
+    } on PlatformException {
+      await Preferences.instance.setBool(Preferences.trackingEnabled, false);
+    }
+  }
+
   Future<void> _initLinks() async {
     AppLinks().uriLinkStream.listen(_handleUri);
   }
 
   Future<void> _handleUri(Uri uri) async {
+    if (!_registered) return;
     if (uri.host == 'action') {
       try {
         switch (uri.pathSegments.firstOrNull) {
@@ -103,6 +120,11 @@ class _MainAppState extends State<MainApp> {
     }
   }
 
+  void _completeRegistration() {
+    setState(() => _registered = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startTracking());
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -122,12 +144,14 @@ class _MainAppState extends State<MainApp> {
           brightness: Brightness.dark,
         ),
       ),
-      home: Stack(
-        children: [
-          const QuickActionsInitializer(),
-          MainScreen(key: mainScreenKey),
-        ],
-      ),
+      home: _registered
+          ? Stack(
+              children: [
+                const QuickActionsInitializer(),
+                MainScreen(key: mainScreenKey),
+              ],
+            )
+          : RegistrationScreen(onRegistered: _completeRegistration),
     );
   }
 }
