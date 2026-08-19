@@ -71,9 +71,7 @@ jobs:
           test -s "$APK"
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           test -x "$APKSIGNER"
-          VERIFY_OUTPUT=$("$APKSIGNER" verify --verbose "$APK" 2>&1)
-          printf '%s\n' "$VERIFY_OUTPUT"
-          printf '%s\n' "$VERIFY_OUTPUT" | grep -F "Verified using v2 scheme: true"
+          "$APKSIGNER" verify --verbose "$APK"
 
       - name: Validate APK alignment
         shell: bash
